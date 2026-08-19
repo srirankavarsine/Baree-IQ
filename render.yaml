@@ -12,3 +12,7 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: qwen/qwen3.6-27b

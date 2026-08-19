@@ -8,7 +8,7 @@ This app can be deployed publicly for free as a demo/MVP.
 - Backend: Render free web service
 - Database: Supabase Postgres free project
 
-No skincare or AI API key is required for the current quiz recommendation app.
+The quiz can fall back to local recommendations, but the live AI Agent and image analysis require a Groq API key on the backend.
 
 ## 1. Put the App on GitHub
 
@@ -35,6 +35,8 @@ Environment variables:
 
 - `DATABASE_URL`: your Supabase Postgres connection string
 - `FRONTEND_URL`: your Vercel app URL, for example `https://bareiq.vercel.app`
+- `GROQ_API_KEY`: add this privately in Render; never commit it to GitHub
+- `GROQ_MODEL`: optional, defaults to `qwen/qwen3.6-27b`
 
 The backend auto-creates tables and seeds the product database on startup.
 
