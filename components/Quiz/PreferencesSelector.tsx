@@ -23,7 +23,6 @@ export function PreferencesSelector({ preferences, onChange }: Props) {
         <div className="grid grid-cols-3 gap-4">
           {["low", "medium", "high"].map((level) => (
             <button
-              type="button"
               key={level}
               onClick={() => onChange({ sensitivityLevel: level })}
               className={`p-4 rounded-xl border-2 capitalize transition-all ${
@@ -43,7 +42,6 @@ export function PreferencesSelector({ preferences, onChange }: Props) {
         <h3 className="text-lg font-semibold mb-4">Budget Range (₹)</h3>
         <div className="grid grid-cols-3 gap-4">
           <button
-            type="button"
             onClick={() => onChange({ budgetRange: "low" })}
             className={`p-4 rounded-xl border-2 transition-all ${
               preferences.budgetRange === "low"
@@ -55,7 +53,6 @@ export function PreferencesSelector({ preferences, onChange }: Props) {
             <span className="text-sm text-gray-400">Budget-friendly</span>
           </button>
           <button
-            type="button"
             onClick={() => onChange({ budgetRange: "medium" })}
             className={`p-4 rounded-xl border-2 transition-all ${
               preferences.budgetRange === "medium"
@@ -67,7 +64,6 @@ export function PreferencesSelector({ preferences, onChange }: Props) {
             <span className="text-sm text-gray-400">Mid-range</span>
           </button>
           <button
-            type="button"
             onClick={() => onChange({ budgetRange: "high" })}
             className={`p-4 rounded-xl border-2 transition-all ${
               preferences.budgetRange === "high"
@@ -86,7 +82,6 @@ export function PreferencesSelector({ preferences, onChange }: Props) {
         <h3 className="text-lg font-semibold mb-4">Product Preferences</h3>
         <div className="space-y-4">
           <motion.button
-            type="button"
             onClick={() => onChange({ prefersNatural: !preferences.prefersNatural })}
             className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${
               preferences.prefersNatural
@@ -109,7 +104,6 @@ export function PreferencesSelector({ preferences, onChange }: Props) {
           </motion.button>
 
           <motion.button
-            type="button"
             onClick={() =>
               onChange({ prefersFragranceFree: !preferences.prefersFragranceFree })
             }

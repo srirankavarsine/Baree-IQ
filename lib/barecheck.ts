@@ -13,10 +13,8 @@ export interface AnonymousIdentity {
 export interface BareCheckInput {
   productId?: number;
   productName: string;
-  productUrl?: string;
   productKind?: string;
   productVariant?: string;
-  category?: string;
   question: string;
   timeline: string;
   skinArea: string[];
@@ -32,12 +30,6 @@ export interface BareCheckInput {
 }
 
 export interface BareCheckAnalysis {
-  isRelevant: boolean;
-  productConfidence: number;
-  productResearchSummary: string;
-  ingredientFlags: string[];
-  reviewSignals: string[];
-  nextStepRecommendation: string;
   recommendation:
     | "Safe to continue carefully"
     | "Monitor closely"
@@ -110,36 +102,6 @@ export const MIXED_ACTIVES = [
 const IDENTITY_KEY = "barecheck_identity";
 const POSTS_KEY = "barecheck_posts";
 const FOLLOWS_KEY = "barecheck_product_follows";
-const COMMUNITY_TOPICS_KEY = "barecheck_community_topics";
-
-const SKINCARE_KEYWORDS = [
-  "skin",
-  "skincare",
-  "face",
-  "acne",
-  "pimple",
-  "blemish",
-  "serum",
-  "moisturizer",
-  "cleanser",
-  "sunscreen",
-  "spf",
-  "retinol",
-  "niacinamide",
-  "salicylic",
-  "hyaluronic",
-  "ceramide",
-  "tone",
-  "routine",
-  "sensitive",
-  "oily",
-  "dry",
-  "combination",
-  "hair",
-  "curly",
-  "straight",
-  "wavy",
-];
 
 export function buildRetailSearchLinks(product: { brand: string; name: string }) {
   const query = encodeURIComponent(`${product.brand} ${product.name}`.trim()).replace(/%20/g, "+");
@@ -148,30 +110,6 @@ export function buildRetailSearchLinks(product: { brand: string; name: string })
     nykaa: `https://www.nykaa.com/search/result/?q=${query}`,
     amazon: `https://www.amazon.in/s?k=${query}`,
   };
-}
-
-export function buildWebLookupLinks(query: string) {
-  const encoded = encodeURIComponent(query.trim()).replace(/%20/g, "+");
-  return {
-    google: `https://www.google.com/search?q=${encoded}`,
-    images: `https://www.google.com/search?tbm=isch&q=${encoded}`,
-    reviews: `https://www.google.com/search?q=${encoded}+reviews`,
-    ingredients: `https://www.google.com/search?q=${encoded}+ingredients`,
-  };
-}
-
-export function getCommunityTopics() {
-  if (typeof window === "undefined") return [];
-  const stored = window.localStorage.getItem(COMMUNITY_TOPICS_KEY);
-  return stored ? (JSON.parse(stored) as string[]) : [];
-}
-
-export function toggleCommunityTopic(topic: string) {
-  if (typeof window === "undefined") return [];
-  const topics = getCommunityTopics();
-  const next = topics.includes(topic) ? topics.filter((item) => item !== topic) : [...topics, topic];
-  window.localStorage.setItem(COMMUNITY_TOPICS_KEY, JSON.stringify(next));
-  return next;
 }
 
 export function getIdentity(): AnonymousIdentity | null {
@@ -250,42 +188,13 @@ export function analyzeBareCheck(input: BareCheckInput): BareCheckAnalysis {
   const symptoms = input.symptoms.map((symptom) => symptom.toLowerCase());
   const severity = input.severity.toLowerCase();
   const actives = input.mixedActives.map((active) => active.toLowerCase());
-  const query = `${input.productName} ${input.productKind || ""} ${input.productVariant || ""} ${input.question || ""} ${input.story || ""} ${input.skinType || ""}`.toLowerCase();
   const has = (value: string) => symptoms.includes(value.toLowerCase());
   const uses = (value: string) => actives.includes(value.toLowerCase());
   const early = input.timeline === "Same day" || input.timeline === "2-3 days";
   const warnings = buildMixedActiveWarnings(input.mixedActives);
-  const isRelevant =
-    SKINCARE_KEYWORDS.some((keyword) => query.includes(keyword)) ||
-    Boolean(input.productName.trim()) ||
-    Boolean(input.productUrl?.trim()) ||
-    Boolean(input.symptoms.length) ||
-    Boolean(input.mixedActives.length);
 
   let recommendation: BareCheckAnalysis["recommendation"] = "Safe to continue carefully";
   let explanation = "Your notes do not show an obvious urgent pattern. Keep changes slow and watch how your skin responds.";
-
-  if (!isRelevant) {
-    return {
-      isRelevant: false,
-      recommendation: "Pause and simplify routine",
-      explanation:
-        "This looks unrelated to skincare. Please share a product, skin concern, or routine question so the checker can give a useful answer.",
-      saferSteps: [
-        "Try asking about a skin product, ingredient, routine, or a specific concern like acne, dryness, or sensitivity.",
-        "Include the product name, product link, or a short description of what happened.",
-        "If Bare Check cannot find the product online, upload a clear product photo and I will read the label next.",
-      ],
-      mixedActiveWarnings: [],
-      productConfidence: 10,
-      productResearchSummary: "No skincare product could be identified from this input.",
-      ingredientFlags: ["No product or ingredient context found."],
-      reviewSignals: ["No user-review pattern available."],
-      nextStepRecommendation: "Share a product name, product URL, or product photo.",
-      credibilityBadges: ["Irrelevant input detected"],
-      verifiedStatus: false,
-    };
-  }
 
   if (has("Swelling") || has("Trouble breathing") || has("Fast-spreading rash") || severity === "urgent") {
     recommendation = "Seek urgent care";
@@ -320,21 +229,8 @@ export function analyzeBareCheck(input: BareCheckInput): BareCheckAnalysis {
     "AI safety reviewed",
     input.symptoms.length > 1 ? "Similar reports found" : "",
   ].filter(Boolean);
-  const ingredientFlags = buildIngredientFlags(input, warnings);
-  const reviewSignals = buildReviewSignals(input, recommendation);
-  const productConfidence = calculateProductConfidence(input, ingredientFlags, reviewSignals);
 
   return {
-    isRelevant: true,
-    productConfidence,
-    productResearchSummary: input.productUrl
-      ? "Product URL included. Bare Check can use it as the strongest product-identification source."
-      : input.productName
-        ? "Product name identified. Bare Check should search the web for official ingredient lists, retailer pages, and user reviews."
-        : "Product name is incomplete. Uploading a label photo will improve the check.",
-    ingredientFlags,
-    reviewSignals,
-    nextStepRecommendation: buildNextStepRecommendation(recommendation),
     recommendation,
     explanation,
     saferSteps: [
@@ -348,62 +244,6 @@ export function analyzeBareCheck(input: BareCheckInput): BareCheckAnalysis {
     verifiedStatus:
       Boolean(input.productName && input.timeline && input.symptoms.length && input.severity) &&
       (Boolean(input.photoDataUrl) || credibilityBadges.includes("30-day follow-up completed")),
-  };
-}
-
-function buildIngredientFlags(input: BareCheckInput, warnings: string[]) {
-  const flags = [...warnings];
-  const productText = `${input.productName} ${input.productKind || ""} ${input.productVariant || ""}`.toLowerCase();
-
-  if (productText.includes("retinol")) flags.push("Retinol can irritate sensitive or recently exfoliated skin.");
-  if (productText.includes("salicylic")) flags.push("Salicylic acid can help clogged pores but may dry the barrier.");
-  if (productText.includes("vitamin c")) flags.push("Vitamin C can sting when the skin barrier is compromised.");
-  if (input.mixedActives.length > 0) flags.push("Routine includes active ingredients, so irritation risk is higher.");
-  if (input.photoDataUrl) flags.push("Product photo uploaded for label review fallback.");
-
-  return Array.from(new Set(flags)).slice(0, 5);
-}
-
-function buildReviewSignals(input: BareCheckInput, recommendation: BareCheckAnalysis["recommendation"]) {
-  const signals = [];
-
-  if (input.productName) signals.push("Search official product pages and marketplace listings for recurring review complaints.");
-  if (input.productUrl) signals.push("Use the provided product URL as the first review and ingredient source.");
-  if (recommendation === "Stop product for now" || recommendation === "Seek urgent care") {
-    signals.push("User symptoms are stronger than review averages; prioritize the user's reaction pattern.");
-  }
-  if (input.symptoms.includes("Acne") || input.symptoms.includes("Bumps")) {
-    signals.push("Compare reviews mentioning breakouts, bumps, clogged pores, or purging.");
-  }
-
-  return signals.length ? signals : ["No strong review signal yet; search reviews or upload the product label."];
-}
-
-function calculateProductConfidence(input: BareCheckInput, ingredientFlags: string[], reviewSignals: string[]) {
-  let confidence = 35;
-  if (input.productName) confidence += 20;
-  if (input.productKind) confidence += 10;
-  if (input.productVariant) confidence += 10;
-  if (input.productUrl) confidence += 15;
-  if (input.photoDataUrl) confidence += 10;
-  if (ingredientFlags.length > 0) confidence += 5;
-  if (reviewSignals.length > 1) confidence += 5;
-  return Math.min(confidence, 98);
-}
-
-function buildNextStepRecommendation(recommendation: BareCheckAnalysis["recommendation"]) {
-  if (recommendation === "Seek urgent care") return "Stop checking online and seek urgent medical care now.";
-  if (recommendation === "Stop product for now") return "Stop the product, simplify your routine, and only reintroduce after symptoms calm down.";
-  if (recommendation === "Pause and simplify routine") return "Pause the product for a few days and keep cleanser, moisturizer, and sunscreen only.";
-  if (recommendation === "Monitor closely") return "Reduce frequency, avoid stacking actives, and watch symptoms for 48-72 hours.";
-  return "Continue carefully, patch test changes, and keep the routine stable.";
-}
-
-export function buildPurchaseLinks(product: { brand: string; name: string; purchase_links?: Record<string, string> }) {
-  const links = buildRetailSearchLinks(product);
-  return {
-    amazon: product.purchase_links?.amazon || links.amazon,
-    nykaa: product.purchase_links?.nykaa || links.nykaa,
   };
 }
 

@@ -1,19 +1,29 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BottomTabs } from "@/components/AppTabs";
+import { motion, AnimatePresence } from "framer-motion";
 import { LoginGate } from "@/components/Auth/LoginGate";
-import { BareCheckInput, analyzeBareCheck, buildWebLookupLinks } from "@/lib/barecheck";
-
-type ChatMessage = {
-  role: "agent" | "user";
-  text: string;
-};
+import { apiFetch } from "@/lib/api";
+import {
+  CHANGED_FACTORS,
+  BareCheckAnalysis,
+  BareCheckInput,
+  BareProduct,
+  MIXED_ACTIVES,
+  SEVERITIES,
+  SKIN_AREAS,
+  SYMPTOMS,
+  TIMELINES,
+  addPost,
+  analyzeBareCheck,
+  createIdentity,
+  getIdentity,
+} from "@/lib/barecheck";
+import { gatedPath, getBareIQUser } from "@/lib/session";
 
 const initialForm: BareCheckInput = {
   productName: "",
-  productUrl: "",
   productKind: "",
   productVariant: "",
   question: "",
@@ -29,185 +39,410 @@ const initialForm: BareCheckInput = {
   skinType: "",
 };
 
-const quickChips = ["burning", "itching", "redness", "acne", "peeling", "swelling", "fast-spreading rash", "retinol", "vitamin c", "salicylic acid"];
+const guidedSteps = ["Start", "Product", "Problem", "Where and when", "Symptoms", "Changes", "Photo", "Result"];
 
 export default function BareCheckPage() {
+  const [mode, setMode] = useState<"quiz" | "chat" | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [products, setProducts] = useState<BareProduct[]>([]);
   const [form, setForm] = useState<BareCheckInput>(initialForm);
-  const [draft, setDraft] = useState("");
-  const [photoName, setPhotoName] = useState("");
-  const [isThinking, setIsThinking] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "agent",
-      text: "Tell me the product name or paste a product link. Then describe what changed on your skin. I will flag likely irritants, not diagnose.",
-    },
-  ]);
-  const [result, setResult] = useState<ReturnType<typeof analyzeBareCheck> | null>(null);
+  const [analysis, setAnalysis] = useState<BareCheckAnalysis | null>(null);
+  const [posted, setPosted] = useState(false);
 
-  const lookupLinks = useMemo(() => buildWebLookupLinks(form.productName || form.productUrl || draft || "skincare product"), [draft, form.productName, form.productUrl]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const product = params.get("product");
+    if (product) setForm((current) => ({ ...current, productName: product }));
+    apiFetch<BareProduct[]>("/api/products").then(setProducts).catch(() => setProducts([]));
+  }, []);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const text = draft.trim();
-    if (!text) return;
+  const matchingProducts = useMemo(() => {
+    const query = form.productName.toLowerCase();
+    if (!query) return products.slice(0, 6);
+    return products
+      .filter((product) => `${product.brand} ${product.name}`.toLowerCase().includes(query))
+      .slice(0, 6);
+  }, [form.productName, products]);
 
-    const nextForm = absorbText(form, text);
-    setForm(nextForm);
-    setMessages((current) => [...current, { role: "user", text }, { role: "agent", text: "I am checking product clues, ingredient-risk words, review-style signals, and your symptoms now..." }]);
-    setDraft("");
-    setIsThinking(true);
-    setResult(null);
+  const canContinue = useMemo(() => {
+    if (currentStep === 0) return Boolean(mode);
+    if (currentStep === 1) return Boolean(form.productName.trim() && form.productKind?.trim() && form.productVariant?.trim());
+    if (currentStep === 2) return Boolean(form.question.trim());
+    if (currentStep === 3) return form.skinArea.length > 0 && Boolean(form.timeline);
+    if (currentStep === 4) return form.symptoms.length > 0 && Boolean(form.severity);
+    return true;
+  }, [currentStep, form, mode]);
 
-    window.setTimeout(() => {
-      const analysis = analyzeBareCheck(nextForm);
-      setResult(analysis);
-      setIsThinking(false);
-      setMessages((current) => [
-        ...current,
-        {
-          role: "agent",
-          text: analysis.isRelevant
-            ? `${analysis.recommendation}. ${analysis.explanation}`
-            : "This does not look related to skincare or a product reaction. Send a product name, ingredient list, symptom, or upload a clear label photo.",
-        },
-      ]);
-    }, 900);
+  const stepTitle = mode === "chat" ? chatTitle(currentStep) : guidedSteps[currentStep];
+
+  const next = () => {
+    if (!canContinue) return;
+    if (currentStep < guidedSteps.length - 1) {
+      setCurrentStep((step) => step + 1);
+      return;
+    }
+    runAnalysis();
   };
 
-  const addChip = (value: string) => {
-    setDraft((current) => current ? `${current}, ${value}` : value);
+  const back = () => {
+    setAnalysis(null);
+    setPosted(false);
+    setCurrentStep((step) => Math.max(0, step - 1));
+  };
+
+  const runAnalysis = () => {
+    const nextAnalysis = analyzeBareCheck(form);
+    const user = getBareIQUser();
+    const identity = getIdentity() || createIdentity(user?.name);
+    setAnalysis(nextAnalysis);
+    setPosted(false);
+
+    if (form.intent !== "Ask AI") {
+      addPost(form, identity, nextAnalysis);
+      setPosted(true);
+    }
+  };
+
+  const chooseProduct = (product: BareProduct) => {
+    setForm((current) => ({
+      ...current,
+      productId: product.id,
+      productName: `${product.brand} ${product.name}`,
+      productKind: product.category || current.productKind,
+      productVariant: product.name,
+    }));
+  };
+
+  const toggleValue = (field: "skinArea" | "symptoms" | "changedFactors" | "mixedActives", value: string) => {
+    setForm((current) => {
+      const values = current[field];
+      return {
+        ...current,
+        [field]: values.includes(value) ? values.filter((item) => item !== value) : [...values, value],
+      };
+    });
   };
 
   const handlePhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setPhotoName(file.name);
-    setForm((current) => ({ ...current, question: `${current.question} uploaded product photo label`.trim() }));
-    setMessages((current) => [...current, { role: "user", text: `Uploaded photo: ${file.name}` }, { role: "agent", text: "If the exact product is hard to find online, I will use the label photo as the fallback source." }]);
+    const reader = new FileReader();
+    reader.onload = () => setForm((current) => ({ ...current, photoDataUrl: String(reader.result) }));
+    reader.readAsDataURL(file);
+  };
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    next();
   };
 
   return (
-    <main className="min-h-screen tab-safe-bottom bg-black px-4 py-5 text-white">
+    <main className="min-h-screen bg-black px-4 py-8 text-white">
       <LoginGate />
-      <div className="app-container">
-        <header className="mb-5 flex items-center justify-between gap-4">
-          <Link href="/" className="pixel-title text-2xl font-black text-white">BareIQ</Link>
-          <div className="flex gap-2">
-            <Link href="/quiz" className="pixel-button hidden bg-black px-4 py-2 text-sm font-black text-white sm:inline-flex">Find your match</Link>
-            <Link href="/community" className="pixel-button bg-white px-4 py-2 text-sm font-black text-black">BIQ Community</Link>
-          </div>
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.10),transparent_34rem)]" />
+      <div className="relative z-10 mx-auto max-w-4xl">
+        <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <Link href="/" className="text-2xl font-black text-white">
+            BareIQ
+          </Link>
+          <nav className="flex flex-wrap gap-3 text-sm">
+            <Link className="rounded-full border border-white/15 px-4 py-2 text-white/70 hover:border-white hover:text-white" href={gatedPath("/quiz")}>
+              BareIQ Quiz
+            </Link>
+            <Link className="rounded-full bg-white px-4 py-2 font-semibold text-black" href={gatedPath("/community")}>
+              Community
+            </Link>
+          </nav>
         </header>
 
-        <section className="pixel-window grid min-h-[calc(100vh-170px)] grid-rows-[auto_1fr_auto] overflow-hidden">
-          <div className="border-b-3 border-white bg-[var(--accent)] p-4 text-black">
-            <p className="pixel-title text-2xl font-black">Bare Check AI</p>
-            <p className="mt-1 text-sm font-black">Chat-based product reaction checker</p>
+        <section className="mb-8">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-white/45">BareCheck</p>
+          <h1 className="text-4xl font-black md:text-6xl">Let’s check this one step at a time.</h1>
+          <p className="mt-4 max-w-2xl text-white/60">
+            No diagnosis, no panic. BareCheck asks the important details and gives safety-first guidance about whether a product may be irritating your skin.
+          </p>
+        </section>
+
+        <div className="mb-6">
+          <div className="mb-3 flex items-center justify-between text-xs text-white/45">
+            <span>{stepTitle}</span>
+            <span>{Math.min(currentStep + 1, guidedSteps.length)} / {guidedSteps.length}</span>
           </div>
-
-          <div className="space-y-4 overflow-y-auto p-4 sm:p-6">
-            {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[86%] border-3 p-4 text-sm font-bold leading-6 sm:max-w-[72%] ${message.role === "user" ? "border-[var(--accent)] bg-[var(--accent)] text-black" : "border-white bg-black text-white"}`}>
-                  {message.text}
-                </div>
-              </div>
-            ))}
-
-            {isThinking && (
-              <div className="w-fit border-3 border-white bg-black p-4 text-sm font-black text-[var(--accent)]">
-                Searching product pages... scanning ingredient clues... checking review signals...
-              </div>
-            )}
-
-            {result && (
-              <section className="pixel-window-light p-5">
-                <p className="text-xs font-black uppercase text-black/50">End result</p>
-                <h2 className="pixel-title mt-2 text-3xl font-black leading-none">{result.recommendation}</h2>
-                <p className="mt-3 text-sm font-bold leading-6 text-black/70">{result.nextStepRecommendation}</p>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <ResultBlock title="Ingredient flags" items={result.ingredientFlags.length ? result.ingredientFlags : ["No obvious ingredient trigger found from the current text."]} />
-                  <ResultBlock title="Review signals to compare" items={result.reviewSignals.length ? result.reviewSignals : ["Look for reviews mentioning burning, bumps, redness, rash, or acne."]} />
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <a href={lookupLinks.google} target="_blank" rel="noreferrer" className="pixel-button bg-white px-4 py-2 text-xs font-black text-black">Search web</a>
-                  <a href={lookupLinks.ingredients} target="_blank" rel="noreferrer" className="pixel-button bg-white px-4 py-2 text-xs font-black text-black">Ingredients</a>
-                  <a href={lookupLinks.reviews} target="_blank" rel="noreferrer" className="pixel-button bg-white px-4 py-2 text-xs font-black text-black">Reviews</a>
-                </div>
-              </section>
-            )}
+          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+            <motion.div
+              className="h-full bg-white"
+              animate={{ width: `${((currentStep + 1) / guidedSteps.length) * 100}%` }}
+            />
           </div>
+        </div>
 
-          <form onSubmit={submit} className="border-t-3 border-white bg-black p-4">
-            <div className="mb-3 flex flex-wrap gap-2">
-              {quickChips.map((chip) => (
-                <button key={chip} type="button" onClick={() => addChip(chip)} className="border-2 border-white/40 px-3 py-1 text-xs font-black text-white/70 hover:border-[var(--accent)] hover:text-[var(--accent)]">
-                  {chip}
+        <form onSubmit={submit}>
+          <AnimatePresence mode="wait">
+            <motion.section
+              key={`${mode}-${currentStep}`}
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              className="rounded-2xl border border-white/10 bg-white/[0.04] p-6"
+            >
+              {renderStep()}
+            </motion.section>
+          </AnimatePresence>
+
+          <div className="mt-6 flex justify-between gap-3">
+            <button
+              type="button"
+              onClick={back}
+              className={`rounded-full px-6 py-3 font-semibold ${currentStep === 0 ? "pointer-events-none opacity-0" : "border border-white/15 text-white/75"}`}
+            >
+              Back
+            </button>
+            <button
+              disabled={!canContinue}
+              className="rounded-full bg-white px-8 py-3 font-black text-black disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {currentStep === guidedSteps.length - 1 ? "Get guidance" : "Next"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  );
+
+  function renderStep() {
+    if (currentStep === 0) {
+      return (
+        <div>
+          <h2 className="text-3xl font-black">How do you want to use BareCheck?</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <ModeCard
+              active={mode === "quiz"}
+              title="Take a guided quiz"
+              body="Best if you want a calm, structured check with every important detail covered."
+              onClick={() => setMode("quiz")}
+            />
+            <ModeCard
+              active={mode === "chat"}
+              title="Talk with the AI-style chatbot"
+              body="Best if you want it to feel like a conversation while BareCheck still asks everything."
+              onClick={() => setMode("chat")}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (currentStep === 1) {
+      return (
+        <div>
+          <StepHeading mode={mode} title="Which exact product are we checking?" chat="Tell me the brand, product type, and exact variant. Tiny details matter here." />
+          <input
+            value={form.productName}
+            onChange={(event) => setForm({ ...form, productName: event.target.value, productId: undefined })}
+            placeholder="Brand, example: Minimalist or Dot & Key"
+            className="mt-5 w-full rounded-xl border border-white/15 bg-black px-4 py-4 outline-none focus:border-white"
+          />
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <input
+              value={form.productKind}
+              onChange={(event) => setForm({ ...form, productKind: event.target.value })}
+              placeholder="Product type: eye serum, moisturizer, sunscreen..."
+              className="w-full rounded-xl border border-white/15 bg-black px-4 py-4 outline-none focus:border-white"
+            />
+            <input
+              value={form.productVariant}
+              onChange={(event) => setForm({ ...form, productVariant: event.target.value })}
+              placeholder="Exact variant: blue gel, brightening, 10% niacinamide..."
+              className="w-full rounded-xl border border-white/15 bg-black px-4 py-4 outline-none focus:border-white"
+            />
+          </div>
+          <p className="mt-3 text-sm text-white/45">
+            Example: Dot & Key moisturizer, blue pack, barrier repair gel. Or Minimalist eye serum, peptide formula.
+          </p>
+          {matchingProducts.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {matchingProducts.map((product) => (
+                <button
+                  type="button"
+                  key={product.id}
+                  onClick={() => chooseProduct(product)}
+                  className="rounded-full border border-white/15 px-3 py-2 text-sm text-white/65 hover:border-white hover:text-white"
+                >
+                  {product.brand} {product.name}
                 </button>
               ))}
             </div>
-            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-              <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Example: Minimalist salicylic acid serum gave me red itchy bumps after 3 days. Should I stop?"
-                className="min-h-24 w-full border-3 border-white bg-black px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-white/35 focus:border-[var(--accent)]"
-              />
-              <div className="grid gap-2">
-                <label className="pixel-button cursor-pointer bg-black px-4 py-3 text-center text-xs font-black text-white">
-                  Upload label
-                  <input type="file" accept="image/*" onChange={handlePhoto} className="sr-only" />
-                </label>
-                <button className="pixel-button bg-white px-5 py-3 text-sm font-black text-black">Send</button>
-              </div>
-            </div>
-            {photoName && <p className="mt-2 text-xs font-bold text-white/50">Photo ready: {photoName}</p>}
-          </form>
-        </section>
+          )}
+        </div>
+      );
+    }
+
+    if (currentStep === 2) {
+      return (
+        <div>
+          <StepHeading mode={mode} title="What is the problem?" chat="What are you worried this product is doing to your skin?" />
+          <textarea
+            value={form.question}
+            onChange={(event) => setForm({ ...form, question: event.target.value, story: event.target.value })}
+            placeholder="Is this product causing acne? Is this purging or irritation? Should I stop it?"
+            className="mt-5 min-h-36 w-full rounded-xl border border-white/15 bg-black px-4 py-4 outline-none focus:border-white"
+          />
+        </div>
+      );
+    }
+
+    if (currentStep === 3) {
+      return (
+        <div>
+          <StepHeading mode={mode} title="Where is it happening, and when did it start?" chat="Show me the location and timeline so I can understand the pattern." />
+          <Segmented label="How long have you been using it?" values={TIMELINES} value={form.timeline} onChange={(timeline) => setForm({ ...form, timeline })} />
+          <ChoiceGrid label="Where is the problem happening?" values={SKIN_AREAS} selected={form.skinArea} onToggle={(value) => toggleValue("skinArea", value)} />
+          <Segmented label="Skin type, optional" values={["Oily", "Dry", "Combination", "Normal", "Sensitive"]} value={form.skinType || ""} onChange={(skinType) => setForm({ ...form, skinType })} />
+        </div>
+      );
+    }
+
+    if (currentStep === 4) {
+      return (
+        <div>
+          <StepHeading mode={mode} title="What symptoms are you seeing?" chat="Pick every symptom that fits, then choose how intense it feels." />
+          <ChoiceGrid label="Symptoms" values={SYMPTOMS} selected={form.symptoms} onToggle={(value) => toggleValue("symptoms", value)} />
+          <Segmented label="Severity" values={SEVERITIES} value={form.severity} onChange={(severity) => setForm({ ...form, severity })} danger />
+          <p className="mt-3 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
+            If you have facial swelling, trouble breathing, severe pain, or a fast-spreading rash, seek urgent medical care.
+          </p>
+        </div>
+      );
+    }
+
+    if (currentStep === 5) {
+      return (
+        <div>
+          <StepHeading mode={mode} title="What else changed recently?" chat="New products and active combinations can change the answer a lot." />
+          <ChoiceGrid label="Recent changes" values={CHANGED_FACTORS} selected={form.changedFactors} onToggle={(value) => toggleValue("changedFactors", value)} />
+          <ChoiceGrid label="Actives mixed with this product" values={MIXED_ACTIVES} selected={form.mixedActives} onToggle={(value) => toggleValue("mixedActives", value)} />
+        </div>
+      );
+    }
+
+    if (currentStep === 6) {
+      return (
+        <div>
+          <StepHeading mode={mode} title="Photo and sharing" chat="Last thing: do you want only guidance, or should this also help the community?" />
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhoto}
+            className="w-full rounded-xl border border-white/15 bg-black px-4 py-3 text-sm text-white/60"
+          />
+          {form.photoDataUrl && <img src={form.photoDataUrl} alt="Uploaded reaction" className="mt-4 max-h-72 w-full rounded-xl border border-gray-800 object-cover" />}
+          <Segmented label="Photo visibility" values={["public", "private"]} value={form.photoVisibility} onChange={(photoVisibility) => setForm({ ...form, photoVisibility: photoVisibility as "public" | "private" })} />
+          <Segmented label="What should BareCheck do?" values={["Ask AI", "Post experience", "Both"]} value={form.intent} onChange={(intent) => setForm({ ...form, intent: intent as BareCheckInput["intent"] })} />
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <StepHeading mode={mode} title="Ready for your safety check?" chat="I have enough detail now. Tap the button and I’ll give you the safest next step." />
+        {analysis ? (
+          <AnalysisCard analysis={analysis} posted={posted} />
+        ) : (
+          <div className="rounded-xl border border-white/10 bg-black p-5 text-white/65">
+            <p>Product: {form.productName}</p>
+            <p className="mt-2">Type: {form.productKind || "Not specified"}</p>
+            <p className="mt-2">Exact variant: {form.productVariant || "Not specified"}</p>
+            <p className="mt-2">Question: {form.question}</p>
+            <p className="mt-2">Symptoms: {form.symptoms.join(", ") || "Not selected"}</p>
+          </div>
+        )}
       </div>
-      <BottomTabs />
-    </main>
+    );
+  }
+}
+
+function ModeCard({ active, title, body, onClick }: { active: boolean; title: string; body: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-2xl border p-5 text-left transition ${active ? "border-white bg-white text-black" : "border-white/10 bg-white/[0.03] hover:border-white/40"}`}
+    >
+      <h3 className="text-xl font-black">{title}</h3>
+      <p className={`mt-2 text-sm ${active ? "text-black/65" : "text-white/55"}`}>{body}</p>
+    </button>
   );
 }
 
-function ResultBlock({ title, items }: { title: string; items: string[] }) {
+function StepHeading({ mode, title, chat }: { mode: "quiz" | "chat" | null; title: string; chat: string }) {
   return (
-    <div className="border-3 border-black bg-white p-4">
-      <h3 className="font-black">{title}</h3>
-      <div className="mt-2 space-y-2 text-sm font-bold text-black/65">
-        {items.map((item) => <p key={item}>{item}</p>)}
+    <div>
+      {mode === "chat" && <p className="mb-3 rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.06] px-4 py-3 text-white/75">{chat}</p>}
+      <h2 className="text-3xl font-black">{title}</h2>
+    </div>
+  );
+}
+
+function Segmented({ label, values, value, onChange, danger }: { label: string; values: string[]; value: string; onChange: (value: string) => void; danger?: boolean }) {
+  return (
+    <div className="mt-5">
+      <p className="mb-2 text-sm text-white/60">{label}</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {values.map((item) => (
+          <button
+            type="button"
+            key={item}
+            onClick={() => onChange(item)}
+            className={`min-h-11 rounded-xl border px-3 text-sm font-semibold ${value === item ? danger ? "border-white bg-white text-black" : "border-white bg-white text-black" : "border-white/15 bg-black text-white/65"}`}
+          >
+            {item}
+          </button>
+        ))}
       </div>
     </div>
   );
 }
 
-function absorbText(current: BareCheckInput, text: string): BareCheckInput {
-  const lower = text.toLowerCase();
-  const symptoms = ["Bumps", "Acne", "Redness", "Burning", "Itching", "Dryness", "Peeling", "Swelling", "Dark spots", "Pain", "Fast-spreading rash", "Trouble breathing"]
-    .filter((symptom) => lower.includes(symptom.toLowerCase()));
-  const mixedActives = ["Retinol", "Vitamin C", "AHA/BHA", "Benzoyl peroxide", "Salicylic acid", "Exfoliating scrub", "Prescription acne medicine"]
-    .filter((active) => lower.includes(active.toLowerCase()) || (active === "AHA/BHA" && (lower.includes("aha") || lower.includes("bha"))));
-  const severity = lower.includes("trouble breathing") || lower.includes("swelling") || lower.includes("fast-spreading") ? "Urgent" : lower.includes("burning") || lower.includes("pain") ? "Moderate" : current.severity;
-  const productUrl = lower.includes("http") ? text.split(/\s+/).find((part) => part.startsWith("http")) : current.productUrl;
-
-  return {
-    ...current,
-    productName: current.productName || guessProductName(text),
-    productUrl,
-    productKind: current.productKind || guessProductKind(lower),
-    productVariant: current.productVariant || text.slice(0, 90),
-    question: `${current.question} ${text}`.trim(),
-    story: `${current.story} ${text}`.trim(),
-    symptoms: Array.from(new Set([...current.symptoms, ...symptoms])),
-    mixedActives: Array.from(new Set([...current.mixedActives, ...mixedActives])),
-    severity,
-  };
+function ChoiceGrid({ label, values, selected, onToggle }: { label: string; values: string[]; selected: string[]; onToggle: (value: string) => void }) {
+  return (
+    <div className="mt-5">
+      <p className="mb-2 text-sm text-white/60">{label}</p>
+      <div className="flex flex-wrap gap-2">
+        {values.map((item) => (
+          <button
+            type="button"
+            key={item}
+            onClick={() => onToggle(item)}
+            className={`rounded-full border px-3 py-2 text-sm ${selected.includes(item) ? "border-white bg-white text-black" : "border-white/15 bg-black text-white/65"}`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-function guessProductName(text: string) {
-  const cleaned = text.replace(/^https?:\/\/\S+/i, "").trim();
-  return cleaned.split(/[.?,]/)[0]?.slice(0, 80) || "Skincare product";
+function AnalysisCard({ analysis, posted }: { analysis: BareCheckAnalysis; posted: boolean }) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
+      <p className="text-sm font-semibold text-white/55">BareCheck result</p>
+      <h2 className="mt-2 text-2xl font-black">{analysis.recommendation}</h2>
+      <p className="mt-3 text-white/75">{analysis.explanation}</p>
+      {analysis.mixedActiveWarnings.length > 0 && (
+        <div className="mt-4 rounded-xl border border-white/15 bg-black p-4 text-sm text-white/70">
+          {analysis.mixedActiveWarnings.map((warning) => <p key={warning}>{warning}</p>)}
+        </div>
+      )}
+      <div className="mt-4 space-y-2 text-sm text-white/70">
+        {analysis.saferSteps.map((step) => <p key={step}>{step}</p>)}
+      </div>
+      <p className="mt-4 text-xs text-white/45">This is rule-based safety guidance, not medical diagnosis.</p>
+      {posted && <Link href={gatedPath("/community")} className="mt-4 inline-flex rounded-full bg-white px-4 py-2 text-sm font-bold text-black">View your post</Link>}
+    </section>
+  );
 }
 
-function guessProductKind(text: string) {
-  return ["serum", "cleanser", "moisturizer", "sunscreen", "toner", "cream", "gel"].find((kind) => text.includes(kind)) || "skincare product";
+function chatTitle(step: number) {
+  return ["Choose style", "Product", "Problem", "Location", "Symptoms", "Recent changes", "Sharing", "Answer"][step];
 }

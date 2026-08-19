@@ -45,7 +45,6 @@ export function SkinTypeSelector({ value, onChange }: Props) {
     <div className="grid gap-4">
       {skinTypes.map((type, index) => (
         <motion.button
-          type="button"
           key={type.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

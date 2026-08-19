@@ -36,7 +36,6 @@ export function ConcernsSelector({ values, onChange }: Props) {
           const isSelected = values.includes(concern.id);
           return (
             <motion.button
-              type="button"
               key={concern.id}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}

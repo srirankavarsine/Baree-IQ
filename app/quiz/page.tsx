@@ -1,185 +1,222 @@
 "use client";
 
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { BottomTabs } from "@/components/AppTabs";
+import { apiFetch } from "@/lib/api";
+import { SkinTypeSelector } from "@/components/Quiz/SkinTypeSelector";
+import { SkinToneSelector } from "@/components/Quiz/SkinToneSelector";
+import { ConcernsSelector } from "@/components/Quiz/ConcernsSelector";
+import { PreferencesSelector } from "@/components/Quiz/PreferencesSelector";
 import { LoginGate } from "@/components/Auth/LoginGate";
 import { saveLocalQuiz } from "@/lib/localQuiz";
 
-const steps = ["Skin Type", "Skin Tone", "Concerns", "Preferences"];
-const skinTypes = [
-  ["oily", "Oily", "Gets shiny quickly, especially in the T-zone"],
-  ["dry", "Dry", "Feels tight or flaky"],
-  ["combination", "Combination", "Oily T-zone, dry/normal elsewhere"],
-  ["normal", "Normal", "Balanced most days"],
-  ["sensitive", "Sensitive", "Reacts easily to products"],
+const steps = [
+  { id: 1, title: "Skin Type", description: "What's your skin like?" },
+  { id: 2, title: "Skin Tone", description: "Pick your shade" },
+  { id: 3, title: "Concerns", description: "What are we fixing?" },
+  { id: 4, title: "Preferences", description: "Your vibe" },
 ];
-const skinTones = [
-  ["fair", "Fair", "#f4d7c1"],
-  ["wheatish", "Wheatish", "#e8c095"],
-  ["medium", "Medium", "#d49a5e"],
-  ["dusky", "Dusky", "#9a6339"],
-  ["deep", "Deep", "#623725"],
-];
-const concerns = ["Acne & Breakouts", "Pigmentation", "Tan Removal", "Dark Spots", "Dullness", "Fine Lines", "Open Pores", "Excess Oil", "Dryness"];
 
 export default function QuizPage() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
-  const [skinType, setSkinType] = useState("oily");
-  const [skinTone, setSkinTone] = useState("medium");
-  const [selectedConcerns, setSelectedConcerns] = useState<string[]>(["acne"]);
-  const [sensitivityLevel, setSensitivityLevel] = useState("medium");
-  const [budgetRange, setBudgetRange] = useState("medium");
-  const [prefersNatural, setPrefersNatural] = useState(false);
-  const [prefersFragranceFree, setPrefersFragranceFree] = useState(true);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [formData, setFormData] = useState({
+    skinType: "",
+    skinTone: "",
+    concerns: [] as string[],
+    sensitivityLevel: "medium",
+    budgetRange: "medium",
+    prefersNatural: false,
+    prefersFragranceFree: false,
+  });
 
-  const progress = ((step + 1) / steps.length) * 100;
-  const toggleConcern = (value: string) => {
-    const normalized = value.toLowerCase().replace(/&/g, "").replace(/\s+/g, "_");
-    setSelectedConcerns((current) => current.includes(normalized) ? current.filter((item) => item !== normalized) : [...current, normalized]);
+  const canContinue =
+    (currentStep === 1 && Boolean(formData.skinType)) ||
+    (currentStep === 2 && Boolean(formData.skinTone)) ||
+    (currentStep === 3 && formData.concerns.length > 0) ||
+    currentStep === 4;
+
+  const handleNext = () => {
+    if (!canContinue || isSubmitting) {
+      return;
+    }
+    setError("");
+    if (currentStep < steps.length) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      submitQuiz();
+    }
   };
 
-  const submit = () => {
-    const quiz = saveLocalQuiz({
-      skinType,
-      skinTone,
-      concerns: selectedConcerns,
-      sensitivityLevel,
-      budgetRange,
-      prefersNatural,
-      prefersFragranceFree,
-    });
-    router.push(`/results?localQuizId=${quiz.id}`);
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const submitQuiz = async () => {
+    setIsSubmitting(true);
+    setError("");
+    try {
+      await apiFetch<{ status: string }>("/api/health").catch(() => ({ status: "warming" }));
+      const data = await apiFetch<{ user_id: number }>("/api/quiz/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          is_guest: true,
+          skin_type: formData.skinType,
+          skin_tone: formData.skinTone,
+          concerns: formData.concerns,
+          sensitivity_level: formData.sensitivityLevel,
+          budget_range: formData.budgetRange,
+          prefers_natural: formData.prefersNatural,
+          prefers_fragrance_free: formData.prefersFragranceFree,
+        }),
+      });
+
+      router.push(`/results?userId=${data.user_id}`);
+    } catch (error) {
+      const localQuiz = saveLocalQuiz({
+        skinType: formData.skinType,
+        skinTone: formData.skinTone,
+        concerns: formData.concerns,
+        sensitivityLevel: formData.sensitivityLevel,
+        budgetRange: formData.budgetRange,
+        prefersNatural: formData.prefersNatural,
+        prefersFragranceFree: formData.prefersFragranceFree,
+      });
+      router.push(`/results?localQuizId=${localQuiz.id}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <SkinTypeSelector
+            value={formData.skinType}
+            onChange={(value) => setFormData({ ...formData, skinType: value })}
+          />
+        );
+      case 2:
+        return (
+          <SkinToneSelector
+            value={formData.skinTone}
+            onChange={(value) => setFormData({ ...formData, skinTone: value })}
+          />
+        );
+      case 3:
+        return (
+          <ConcernsSelector
+            values={formData.concerns}
+            onChange={(values) => setFormData({ ...formData, concerns: values })}
+          />
+        );
+      case 4:
+        return (
+          <PreferencesSelector
+            preferences={formData}
+            onChange={(updates) => setFormData({ ...formData, ...updates })}
+          />
+        );
+      default:
+        return null;
+    }
   };
 
   return (
-    <main className="min-h-screen tab-safe-bottom bg-black px-4 py-5 text-white">
+    <main className="min-h-screen bg-dark-900 py-12 px-4">
       <LoginGate />
-      <div className="app-container">
-        <Header />
-        <Progress step={step} progress={progress} />
-        <section className="pixel-window mx-auto mt-8 max-w-3xl p-5 sm:p-7">
-          {step === 0 && (
-            <Step title="Skin Type" subtitle="What's your skin like?">
-              <div className="grid gap-3">
-                {skinTypes.map(([value, label, note]) => (
-                  <button key={value} type="button" onClick={() => setSkinType(value)} className={`pixel-button flex items-center gap-4 bg-black p-4 text-left text-white ${skinType === value ? "border-[var(--accent)] shadow-[5px_6px_0_#00b7ff]" : "border-white/60 shadow-none"}`}>
-                    <span className="pixel-title text-2xl">{label.slice(0, 2).toUpperCase()}</span>
-                    <span><strong className="block text-lg">{label}</strong><span className="text-sm text-white/55">{note}</span></span>
-                  </button>
-                ))}
+      <div className="container mx-auto max-w-2xl">
+        {/* Progress Bar */}
+        <div className="mb-8">
+          <div className="flex justify-between mb-4">
+            {steps.map((step) => (
+              <div
+                key={step.id}
+                className={`flex flex-col items-center ${
+                  step.id <= currentStep ? "text-primary-400" : "text-gray-600"
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                    step.id <= currentStep
+                      ? "bg-gradient-to-r from-primary-500 to-secondary-500 text-white"
+                      : "bg-gray-800"
+                  }`}
+                >
+                  {step.id < currentStep ? "✓" : step.id}
+                </div>
+                <span className="text-xs mt-2 hidden md:block">{step.title}</span>
               </div>
-            </Step>
-          )}
-          {step === 1 && (
-            <Step title="Skin Tone" subtitle="Pick your shade">
-              <div className="grid gap-3">
-                {skinTones.map(([value, label, color]) => (
-                  <button key={value} type="button" onClick={() => setSkinTone(value)} className={`pixel-button flex items-center gap-4 bg-black p-4 text-left text-white ${skinTone === value ? "border-[var(--accent)] shadow-[5px_6px_0_#00b7ff]" : "border-white/60 shadow-none"}`}>
-                    <span className="h-14 w-14 border-3 border-white" style={{ background: color }} />
-                    <span><strong className="block text-lg">{label}</strong><span className="text-sm text-white/55">Indian skin tone match</span></span>
-                  </button>
-                ))}
-              </div>
-            </Step>
-          )}
-          {step === 2 && (
-            <Step title="Concerns" subtitle="Select all that apply">
-              <div className="grid gap-3 sm:grid-cols-3">
-                {concerns.map((concern) => {
-                  const normalized = concern.toLowerCase().replace(/&/g, "").replace(/\s+/g, "_");
-                  const active = selectedConcerns.includes(normalized);
-                  return (
-                    <button key={concern} type="button" onClick={() => toggleConcern(concern)} className={`pixel-button min-h-28 bg-black p-3 text-sm font-black text-white ${active ? "border-[var(--accent)] shadow-[5px_6px_0_#00b7ff]" : "border-white/60 shadow-none"}`}>
-                      {concern}
-                    </button>
-                  );
-                })}
-              </div>
-            </Step>
-          )}
-          {step === 3 && (
-            <Step title="Preferences" subtitle="Your buying style">
-              <Segment title="Sensitivity Level" values={["low", "medium", "high"]} value={sensitivityLevel} onChange={setSensitivityLevel} />
-              <Segment title="Budget Range" values={["low", "medium", "high"]} labels={["Under 500", "500-1000", "1000+"]} value={budgetRange} onChange={setBudgetRange} />
-              <div className="mt-5 grid gap-3">
-                <Toggle label="Natural/Organic Products" active={prefersNatural} onClick={() => setPrefersNatural((value) => !value)} />
-                <Toggle label="Fragrance-Free" active={prefersFragranceFree} onClick={() => setPrefersFragranceFree((value) => !value)} />
-              </div>
-            </Step>
-          )}
-        </section>
-        <div className="mx-auto mt-7 flex max-w-3xl justify-between gap-3">
-          <button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))} className={`pixel-button bg-black px-6 py-3 font-black text-white ${step === 0 ? "invisible" : ""}`}>Back</button>
-          <button type="button" onClick={() => step === steps.length - 1 ? submit() : setStep((value) => value + 1)} className="pixel-button bg-white px-7 py-3 font-black text-black">
-            {step === steps.length - 1 ? "Get Results" : "Next ->"}
+            ))}
+          </div>
+          <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-gradient-to-r from-primary-500 via-secondary-500 to-accent-500"
+              initial={{ width: 0 }}
+              animate={{ width: `${(currentStep / steps.length) * 100}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
+        </div>
+
+        {/* Step Content */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStep}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="glass p-8 rounded-2xl border border-gray-800 mb-8">
+              <h2 className="text-3xl font-bold mb-2 gradient-text">
+                {steps[currentStep - 1].title}
+              </h2>
+              <p className="text-gray-400 mb-6">{steps[currentStep - 1].description}</p>
+              {renderStep()}
+              {error && (
+                <p className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {error}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Navigation Buttons */}
+        <div className="flex justify-between gap-4">
+          <button
+            onClick={handleBack}
+            disabled={currentStep === 1}
+            className={`px-8 py-3 rounded-full font-medium transition-all ${
+              currentStep === 1
+                ? "opacity-0 pointer-events-none"
+                : "glass text-white hover:bg-white/10"
+            }`}
+          >
+            ← Back
           </button>
+          <motion.button
+            onClick={handleNext}
+            disabled={!canContinue || isSubmitting}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className={`px-12 py-3 rounded-full font-bold text-white shadow-lg shadow-primary-500/30 transition-all ${
+              canContinue && !isSubmitting
+                ? "bg-gradient-to-r from-primary-500 to-secondary-500"
+                : "cursor-not-allowed bg-gray-700 text-gray-400 shadow-none"
+            }`}
+          >
+            {isSubmitting ? "Finding matches..." : currentStep === steps.length ? "Get Results ✨" : "Next →"}
+          </motion.button>
         </div>
       </div>
-      <BottomTabs />
     </main>
-  );
-}
-
-function Header() {
-  return (
-    <header className="flex items-center justify-between gap-4">
-      <Link href="/" className="pixel-title text-2xl font-black text-white">BareIQ</Link>
-      <Link href="/community" className="pixel-button bg-white px-4 py-2 text-sm font-black text-black">BIQ Community</Link>
-    </header>
-  );
-}
-
-function Progress({ step, progress }: { step: number; progress: number }) {
-  return (
-    <section className="mx-auto mt-8 max-w-3xl">
-      <div className="grid grid-cols-4 gap-2 text-center">
-        {steps.map((item, index) => (
-          <div key={item} className={index <= step ? "text-[var(--accent)]" : "text-white/30"}>
-            <span className="pixel-title mx-auto grid h-11 w-11 place-items-center border-3 border-current bg-black text-lg">{index < step ? "OK" : index + 1}</span>
-            <p className="mt-2 text-xs font-black">{item}</p>
-          </div>
-        ))}
-      </div>
-      <div className="mt-5 h-3 border-3 border-white bg-black">
-        <div className="h-full bg-[var(--accent)]" style={{ width: `${progress}%` }} />
-      </div>
-    </section>
-  );
-}
-
-function Step({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <>
-      <h1 className="pixel-title text-4xl font-black text-[var(--accent)] sm:text-5xl">{title}</h1>
-      <p className="mt-3 text-lg font-bold text-white/55">{subtitle}</p>
-      <div className="mt-7">{children}</div>
-    </>
-  );
-}
-
-function Segment({ title, values, labels, value, onChange }: { title: string; values: string[]; labels?: string[]; value: string; onChange: (value: string) => void }) {
-  return (
-    <div className="mt-5">
-      <p className="mb-2 font-black">{title}</p>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {values.map((item, index) => (
-          <button key={item} type="button" onClick={() => onChange(item)} className={`pixel-button bg-black px-4 py-4 font-black capitalize text-white ${value === item ? "border-[var(--accent)] shadow-[5px_6px_0_#00b7ff]" : "border-white/60 shadow-none"}`}>
-            {labels?.[index] || item}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Toggle({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className={`pixel-button flex items-center justify-between bg-black px-4 py-4 text-left font-black text-white ${active ? "border-[var(--accent)] shadow-[5px_6px_0_#00b7ff]" : "border-white/60 shadow-none"}`}>
-      {label}
-      <span className={`h-7 w-7 border-3 ${active ? "border-[var(--accent)] bg-[var(--accent)]" : "border-white/60 bg-black"}`} />
-    </button>
   );
 }

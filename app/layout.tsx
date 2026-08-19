@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Pixelify_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
 import "../styles/globals.css";
 
-const pixel = Pixelify_Sans({ subsets: ["latin"], variable: "--font-pixel" });
-const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-mono" });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "BareIQ - Skincare Product Checks",
-  description: "A blue, black, and white retro skincare app for product checks, product matches, and community threads.",
+  description: "Minimal skincare recommendations, product reaction checks, and community reports for Indian skin.",
 };
 
 export default function RootLayout({
@@ -17,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${pixel.variable} ${mono.variable}`}>{children}</body>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

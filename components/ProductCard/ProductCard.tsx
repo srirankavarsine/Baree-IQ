@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { buildPurchaseLinks } from "@/lib/barecheck";
+import { buildRetailSearchLinks } from "@/lib/barecheck";
 import { gatedPath } from "@/lib/session";
 
 export interface Product {
@@ -37,7 +37,7 @@ interface Props {
 }
 
 export function ProductCard({ product, matchScore, reason, index }: Props) {
-  const retailLinks = buildPurchaseLinks(product);
+  const retailLinks = buildRetailSearchLinks(product);
 
   return (
     <motion.div
@@ -151,13 +151,13 @@ export function ProductCard({ product, matchScore, reason, index }: Props) {
           <span className="text-sm text-gray-500 ml-1">{product.currency}</span>
         </div>
         <div className="flex gap-2">
-        <a
-          href={retailLinks.nykaa}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-4 py-2 bg-[#e81ca2] text-white rounded-full text-sm font-medium hover:bg-[#c4178a] transition-colors"
-        >
-          Nykaa
+          <a
+            href={retailLinks.nykaa}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-[#e81ca2] text-white rounded-full text-sm font-medium hover:bg-[#c4178a] transition-colors"
+          >
+            Nykaa
           </a>
           <a
             href={retailLinks.amazon}
