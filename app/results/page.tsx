@@ -11,6 +11,7 @@ import { LoginGate } from "@/components/Auth/LoginGate";
 import { buildLocalRecommendations, getLocalQuiz } from "@/lib/localQuiz";
 import { gatedPath } from "@/lib/session";
 import { fallbackProducts } from "@/lib/fallbackProducts";
+import { SiteNav } from "@/components/Navigation/SiteNav";
 
 interface Product {
   id: number;
@@ -113,10 +114,10 @@ function ResultsContent() {
         >
           <div className="mb-6 flex flex-wrap justify-center gap-3">
             <Link
-              href={gatedPath("/barecheck")}
+              href={gatedPath("/product-match")}
               className="rounded-full border border-accent-400/50 px-5 py-2 text-sm font-bold text-accent-100 hover:border-accent-300"
             >
-              BareCheck a product
+              Match a product
             </Link>
             <Link
               href={gatedPath("/community")}
@@ -296,6 +297,7 @@ export default function ResultsPage() {
       </div>
     }>
       <LoginGate />
+      <SiteNav />
       <ResultsContent />
     </Suspense>
   );

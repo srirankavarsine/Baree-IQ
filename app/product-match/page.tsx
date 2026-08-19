@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { LoginGate } from "@/components/Auth/LoginGate";
 import { SiteNav } from "@/components/Navigation/SiteNav";
@@ -10,6 +10,10 @@ import { buildRetailSearchLinks } from "@/lib/barecheck";
 export default function ProductMatchPage() {
   const [query, setQuery] = useState("");
   const [goal, setGoal] = useState("acne");
+  useEffect(() => {
+    const productFromLink = new URLSearchParams(window.location.search).get("product");
+    if (productFromLink) setQuery(productFromLink);
+  }, []);
   const product = useMemo(() => fallbackProducts.find((item) => `${item.brand} ${item.name}`.toLowerCase().includes(query.toLowerCase())) || fallbackProducts.find((item) => item.concerns.includes(goal)) || fallbackProducts[1], [query, goal]);
   const links = buildRetailSearchLinks(product);
   const score = Math.min(96, 62 + (product.concerns.includes(goal) ? 25 : 0) + (product.is_fragrance_free ? 6 : 0));

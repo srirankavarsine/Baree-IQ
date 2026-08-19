@@ -8,35 +8,32 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      borderWidth: {
-        3: "3px",
-      },
       colors: {
         primary: {
-          400: "#33cfff",
-          500: "#00b7ff",
-          600: "#008ee6",
+          400: "#ff9aa5",
+          500: "#ff6b7a",
+          600: "#d94d60",
         },
         secondary: {
-          400: "#ffffff",
-          500: "#dff6ff",
-          600: "#9be8ff",
+          400: "#8fe9d2",
+          500: "#63dfc1",
+          600: "#3ab99a",
         },
         accent: {
-          400: "#33cfff",
-          500: "#00b7ff",
-          600: "#0057ff",
+          400: "#8bdcff",
+          500: "#55c7ff",
+          600: "#2498d2",
         },
         dark: {
-          900: "#0f0f0f",
-          800: "#1a1a1a",
-          700: "#262626",
+          900: "#0d1117",
+          800: "#151c26",
+          700: "#344356",
         }
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "hero-gradient": "linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%)",
-        "gen-z-gradient": "linear-gradient(to right, #c084fc, #f472b6, #2dd4bf)",
+        "hero-gradient": "linear-gradient(135deg, #0d1117 0%, #151c26 55%, #24384a 100%)",
+        "gen-z-gradient": "linear-gradient(to right, #ff6b7a, #b7a7ff, #55c7ff)",
       },
       animation: {
         "gradient": "gradient 8s linear infinite",

@@ -17,7 +17,7 @@ import {
   toggleFollow,
   updatePost,
 } from "@/lib/barecheck";
-import { gatedPath, getBareIQUser } from "@/lib/session";
+import { getBareIQUser } from "@/lib/session";
 import { SiteNav } from "@/components/Navigation/SiteNav";
 
 const voteLabels = ["Same happened to me", "This helped me", "Helpful", "Report"];
@@ -149,25 +149,11 @@ export default function CommunityPage() {
   };
 
   return (
-    <main className="pixel-page px-4 py-8">
+    <main className="pixel-page community-page px-4 py-8">
       <LoginGate />
       <SiteNav />
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.10),transparent_34rem)]" />
       <div className="relative z-10 mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <Link href="/" className="text-2xl font-black text-white">
-            BareIQ
-          </Link>
-          <nav className="flex flex-wrap gap-3 text-sm">
-            <Link className="rounded-full border border-white/15 px-4 py-2 text-white/70 hover:border-white hover:text-white" href={gatedPath("/barecheck")}>
-              BareCheck
-            </Link>
-            <Link className="rounded-full border border-white/15 px-4 py-2 text-white/70 hover:border-white hover:text-white" href={gatedPath("/results")}>
-              Results
-            </Link>
-          </nav>
-        </header>
-
         <section className="mb-8 grid gap-5 lg:grid-cols-[1fr_0.8fr]">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-white/45">Community reactions</p>
@@ -218,8 +204,8 @@ export default function CommunityPage() {
               {item}
             </button>
           ))}
-          <Link href={gatedPath("/barecheck")} className="rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white/65">
-            Structured reaction check
+          <Link href="/agent" className="rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white/65">
+            Ask the AI agent
           </Link>
         </section>
 

@@ -9,6 +9,7 @@ import { SkinToneSelector } from "@/components/Quiz/SkinToneSelector";
 import { ConcernsSelector } from "@/components/Quiz/ConcernsSelector";
 import { PreferencesSelector } from "@/components/Quiz/PreferencesSelector";
 import { LoginGate } from "@/components/Auth/LoginGate";
+import { SiteNav } from "@/components/Navigation/SiteNav";
 import { saveLocalQuiz } from "@/lib/localQuiz";
 
 const steps = [
@@ -129,8 +130,10 @@ export default function QuizPage() {
   };
 
   return (
-    <main className="min-h-screen bg-dark-900 py-12 px-4">
+    <>
       <LoginGate />
+      <SiteNav />
+      <main className="min-h-screen bg-dark-900 py-12 px-4">
       <div className="container mx-auto max-w-2xl">
         {/* Progress Bar */}
         <div className="mb-8">
@@ -217,6 +220,7 @@ export default function QuizPage() {
           </motion.button>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

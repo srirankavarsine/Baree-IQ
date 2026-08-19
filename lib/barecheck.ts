@@ -103,12 +103,12 @@ const IDENTITY_KEY = "barecheck_identity";
 const POSTS_KEY = "barecheck_posts";
 const FOLLOWS_KEY = "barecheck_product_follows";
 
-export function buildRetailSearchLinks(product: { brand: string; name: string }) {
+export function buildRetailSearchLinks(product: { brand: string; name: string; purchase_links?: Record<string, string> }) {
   const query = encodeURIComponent(`${product.brand} ${product.name}`.trim()).replace(/%20/g, "+");
 
   return {
-    nykaa: `https://www.nykaa.com/search/result/?q=${query}`,
-    amazon: `https://www.amazon.in/s?k=${query}`,
+    nykaa: product.purchase_links?.nykaa || `https://www.nykaa.com/search/result/?q=${query}`,
+    amazon: product.purchase_links?.amazon || `https://www.amazon.in/s?k=${query}`,
   };
 }
 

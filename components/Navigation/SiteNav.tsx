@@ -2,13 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { gatedPath } from "@/lib/session";
-
 const links = [
   ["/agent", "AI Agent"],
+  ["/quiz", "Survey"],
   ["/product-match", "Match"],
   ["/routine-sync", "Routine Sync"],
-  ["/barecheck", "BareCheck"],
   ["/community", "Community"],
   ["/profile", "Profile"],
 ] as const;
@@ -24,7 +22,7 @@ export function SiteNav({ publicOnly = false }: { publicOnly?: boolean }) {
         {visibleLinks.map(([href, label]) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
-            <Link key={href} href={gatedPath(href)} className={active ? "pixel-nav-link active" : "pixel-nav-link"}>
+            <Link key={href} href={href} className={active ? "pixel-nav-link active" : "pixel-nav-link"}>
               {label}
             </Link>
           );
